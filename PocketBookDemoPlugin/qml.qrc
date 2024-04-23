@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>ErrorDialog.qml</file>
+        <file>OkButton.qml</file>
+    </qresource>
+</RCC>
