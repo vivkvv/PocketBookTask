@@ -59,11 +59,10 @@ PocketBookCodecLibErrorCode PocketDecoder::innerEncodeData(
     encodedData.formatIdentifier[1] = 'A';
     encodedData.width = rawData->width;
     encodedData.height = rawData->height;
-    encodedData.rowsIndex = std::make_unique<uint32_t[]>(encodedData.height);
 
-    std::vector<bool> boolData;
+    std::vector<bool> boolData(encodedData.height);
 
-    for (int row = 0; row < rawData->height; ++row){
+    for (uint32_t row = 0; row < rawData->height; ++row){
 
         if(m_cancel.load()){
             throw OperationCanceledException();
@@ -73,13 +72,13 @@ PocketBookCodecLibErrorCode PocketDecoder::innerEncodeData(
 
         bool allWhite = allTheSame(sourceRow, sourceRow + rawData->width, WHITE_PIXEL);
 
-        encodedData.rowsIndex[row] = allWhite ? 1 : 0;
+        boolData[row] = allWhite ? 1 : 0;
 
         if(allWhite) {
             continue;
         };
 
-        for(int col = 0; col < rawData->width; col += PIXELS_BLOCK_SIZE){
+        for(uint32_t col = 0; col < rawData->width; col += PIXELS_BLOCK_SIZE){
             int rest = rawData->width - col;
             SequenceType seqType = {SequenceType::stDifferent};
 
@@ -172,7 +171,7 @@ PocketBookCodecLibErrorCode PocketDecoder::innerDecodeData(
 
     outputImage.fill(Qt::white);
 
-    uint64_t dataOffset = 0;
+    uint64_t dataOffset = encodedData->height;
 
     for(size_t row = 0; row < encodedData->height; ++row){
 
@@ -180,7 +179,7 @@ PocketBookCodecLibErrorCode PocketDecoder::innerDecodeData(
             throw OperationCanceledException();
         }
 
-        if(encodedData->rowsIndex[row] == 1){
+        if(getBitByOffset(encodedData, row)){
             continue;
         }
 
@@ -244,9 +243,6 @@ PocketBookCodecLibErrorCode PocketDecoder::writeEncodedData(
     file.write(reinterpret_cast<const char*>(&encodedData.width), sizeof(encodedData.width));
     file.write(reinterpret_cast<const char*>(&encodedData.height), sizeof(encodedData.height));
 
-    // rows indexes
-    file.write(reinterpret_cast<const char*>(encodedData.rowsIndex.get()), encodedData.height * sizeof(uint32_t));
-
     size_t bitsNeeded = 8 - (boolData.size() % 8);
     if (bitsNeeded != 8) {
         for (size_t i = 0; i < bitsNeeded; ++i){
@@ -269,9 +265,10 @@ PocketBookCodecLibErrorCode PocketDecoder::writeEncodedData(
     return PocketBookCodecLibErrorCode::ecOk;
 }
 
-bool PocketDecoder::getNextBit(std::unique_ptr<EncodedData>& encodedData,
-                                    uint64_t& dataOffset){
-
+bool PocketDecoder::getBitByOffset(
+                std::unique_ptr<EncodedData>& encodedData,
+                const uint64_t& dataOffset)
+{
     if(dataOffset / 8 >= encodedData->dataSize) {
         throw std::out_of_range("");
     }
@@ -281,8 +278,14 @@ bool PocketDecoder::getNextBit(std::unique_ptr<EncodedData>& encodedData,
 
     bool bit = (encodedData->data[byteIndex] & (1 << bitIndex)) != 0;
 
-    ++dataOffset;
+    return bit;
+}
 
+
+bool PocketDecoder::getNextBit(std::unique_ptr<EncodedData>& encodedData,
+                               uint64_t& dataOffset){
+    bool bit = getBitByOffset(encodedData, dataOffset);
+    ++dataOffset;
     return bit;
 }
 

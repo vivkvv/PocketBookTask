@@ -16,24 +16,24 @@ PocketQmlProcessor::PocketQmlProcessor(FileListModel& model,
     : QObject{parent}
     , m_fileListModel(model)
     , m_engine(engine) {
-    QStringList args = QCoreApplication::arguments();
-    m_directory = QDir::currentPath();
-
-    if (args.count() > 1 && QDir(args[1]).exists()){
-        m_directory  = args[1];
-    }
 }
 
 Q_INVOKABLE void PocketQmlProcessor::initializeFiles() {
-    QDir dir(m_directory);
-    QStringList filters{"*.bmp", "*.png", "*.barch"};
-    dir.setNameFilters(filters);
+
+    QStringList args = QCoreApplication::arguments();
+    QString directory = QDir::currentPath();
+
+    if (args.count() > 1 && QDir(args[1]).exists()){
+        directory  = args[1];
+    }
+
+    QDir dir(directory);
     dir.setFilter(QDir::Files | QDir::NoSymLinks);
 
     QList<FileItem> filesList;
     for(const auto& file: dir.entryInfoList()){
         FileItem item;
-        item.name = file.fileName();
+        item.name = QDir(directory).filePath(file.fileName());
         item.size = file.size();
         item.codingState = CodingState::csNone;
         filesList.append(item);
@@ -42,58 +42,67 @@ Q_INVOKABLE void PocketQmlProcessor::initializeFiles() {
     m_fileListModel.setFilesList(filesList);
 }
 
-void PocketQmlProcessor::handleResult(int idx, int result) {
+void PocketQmlProcessor::handleResult(
+        const QString& inputFileName,
+        int result) {
 
-    const FileItem* item = m_fileListModel.getFileItem(idx);
-
-    if(item == nullptr) {
-        return;
-    }
-
-    m_fileListModel.updateFileState(idx, CodingState::csNone);
-    m_fileListModel.updateResultState(idx, result);
+    m_fileListModel.updateFileState(inputFileName, CodingState::csNone);
+    m_fileListModel.updateResultState(inputFileName, result);
 
     QMutexLocker locker(&m_mutex);
-    if(workers.contains(idx)){
-        WorkerStruct& workerStruct = workers[idx];
-        QString newFileName = QDir(m_directory).filePath(workerStruct.fileName);
-        QFileInfo fileInfo(newFileName);
+    if(workers.contains(inputFileName)){
+        WorkerStruct& workerStruct = workers[inputFileName];
+        QFileInfo fileInfo(workerStruct.outputFileName);
         if(fileInfo.exists()){
-            FileItem fileDetails{workerStruct.fileName, fileInfo.size(),
+            FileItem fileDetails{workerStruct.outputFileName, fileInfo.size(),
                                  CodingState::csNone};
             m_fileListModel.addFile(fileDetails);
         }
     }
 }
 
-void PocketQmlProcessor::bmpSelect(int idx, const QString& inputFileName) {
+void PocketQmlProcessor::bmpSelect(const QString& inputFileName) {
     QImage img;
     bool loaded = img.load(inputFileName);
     if(!loaded){
         m_fileListModel.updateResultState(
-            idx,
+            inputFileName,
             static_cast<int>(OperationResultState::orsCantLoadInputImage));
         return;
     }
 
-    m_fileListModel.updateFileState(idx, CodingState::csCoding);
+    m_fileListModel.updateFileState(inputFileName, CodingState::csCoding);
 
     QImage converted = img.convertToFormat(QImage::Format_Grayscale8);
 
     std::unique_ptr<RawImageData> rawData = std::make_unique<RawImageData>();
-
     rawData->width = converted.width();
     rawData->height = converted.height();
+    /*
+    rawData->width = 7;
+    rawData->height = 6;
+    */
     rawData->data = std::make_unique<unsigned char[]>(rawData->width * rawData->height);
 
     for(int row = 0; row < converted.height(); ++row){
         memcpy(rawData->data.get() + row * rawData->width, converted.scanLine(row), rawData->width);
     }
+    /*
+    std::vector<unsigned char> testData = {
+        255, 255, 255, 255, 137, 24 , 120,
+        255, 255, 255, 255, 255, 13 , 7  ,
+        255, 255, 255, 255, 255, 255, 3  ,
+        0  , 0  , 0  , 0  , 0  , 7  , 8  ,
+        0  , 0  , 0  , 4  , 2  , 1  , 3  ,
+        0  , 1  , 2  , 3  , 4  , 5  , 6
 
-    QFileInfo fi(inputFileName);
-    QString shortFileName = fi.fileName() + "packed.barch";
-    QString outputFileName = QDir(m_directory).filePath(shortFileName);
-    EncodeWorker* encodeWorker = new EncodeWorker(idx, outputFileName, std::move(rawData));
+    };
+
+    memcpy(rawData->data.get(), testData.data(), rawData->width * rawData->height * sizeof(unsigned char));
+    */
+
+    QString outputFileName = inputFileName + "packed.barch";
+    EncodeWorker* encodeWorker = new EncodeWorker(inputFileName, outputFileName, std::move(rawData));
 
     QThread* thread = new QThread();
 
@@ -103,9 +112,9 @@ void PocketQmlProcessor::bmpSelect(int idx, const QString& inputFileName) {
     connect(encodeWorker, &EncodeWorker::resultReady, this, &PocketQmlProcessor::handleResult);
     connect(encodeWorker, &EncodeWorker::resultReady, thread, &QThread::quit);
     connect(thread, &QThread::finished, encodeWorker, &QObject::deleteLater);
-    connect(thread, &QThread::finished, this, [this, idx, thread]() {
+    connect(thread, &QThread::finished, this, [this, inputFileName, thread]() {
         QMutexLocker locker(&m_mutex);
-        workers.remove(idx);
+        workers.remove(inputFileName);
         thread->deleteLater();
     });
 
@@ -113,7 +122,7 @@ void PocketQmlProcessor::bmpSelect(int idx, const QString& inputFileName) {
 
     {
         QMutexLocker locker(&m_mutex);
-        workers.insert(idx, WorkerStruct{encodeWorker, shortFileName});
+        workers.insert(inputFileName, WorkerStruct{encodeWorker, outputFileName});
     }
 
     thread->start();
@@ -150,28 +159,14 @@ OperationResultState PocketQmlProcessor::loadEncodedData(
     file.read(reinterpret_cast<char*>(&encodedData->width), sizeof(encodedData->width));
     file.read(reinterpret_cast<char*>(&encodedData->height), sizeof(encodedData->height));
 
-    // check if there are height * sizeof(height)
-    qint64 rowIndexSize = encodedData->height * sizeof(EncodedData::dimension_type);
-    if(fileSize < minimalSize + rowIndexSize){
-        return OperationResultState::orsBarchRowIndexTooSmall;
-    }
-
-    encodedData->rowsIndex = std::make_unique<EncodedData::dimension_type[]>(encodedData->height);
-    if(!encodedData->rowsIndex){
-        return OperationResultState::orsCantLoadBarchRowIndex;
-    }
-
-    file.read(reinterpret_cast<char*>(encodedData->rowsIndex.get()),
-              encodedData->height * sizeof(EncodedData::dimension_type));
-
-    encodedData->dataSize = fileSize - (minimalSize + rowIndexSize);
+    encodedData->dataSize = fileSize - minimalSize;
     encodedData->data = std::make_unique<unsigned char[]>(encodedData->dataSize);
     file.read(reinterpret_cast<char*>(encodedData->data.get()), encodedData->dataSize);
 
     return OperationResultState::csNone;
 }
 
-void PocketQmlProcessor::barchSelect(int idx, const QString& inputFileName) {
+void PocketQmlProcessor::barchSelect(const QString& inputFileName) {
 
     std::unique_ptr<EncodedData> encodedData = std::make_unique<EncodedData>();
 
@@ -179,17 +174,15 @@ void PocketQmlProcessor::barchSelect(int idx, const QString& inputFileName) {
 
     if(loadResult != OperationResultState::csNone){
         m_fileListModel.updateResultState(
-            idx,
+            inputFileName,
             static_cast<int>(loadResult));
         return;
     }
 
-    m_fileListModel.updateFileState(idx, CodingState::csDecoding);
+    m_fileListModel.updateFileState(inputFileName, CodingState::csDecoding);
 
-    QFileInfo fi(inputFileName);
-    QString shortFileName = fi.fileName() + "unpacked.bmp";
-    QString outputFileName = QDir(m_directory).filePath(shortFileName);
-    auto decodeWorker = new DecodeWorker(idx, outputFileName, std::move(encodedData));
+    QString outputFileName = inputFileName + "unpacked.bmp";
+    auto decodeWorker = new DecodeWorker(inputFileName, outputFileName, std::move(encodedData));
 
     QThread* thread = new QThread();
 
@@ -198,9 +191,9 @@ void PocketQmlProcessor::barchSelect(int idx, const QString& inputFileName) {
     connect(decodeWorker, &DecodeWorker::resultReady, this, &PocketQmlProcessor::handleResult);
     connect(decodeWorker, &DecodeWorker::resultReady, thread, &QThread::quit);
     connect(thread, &QThread::finished, decodeWorker, &QObject::deleteLater);
-    connect(thread, &QThread::finished, this, [this, idx, thread]() {
+    connect(thread, &QThread::finished, this, [this, inputFileName, thread]() {
         QMutexLocker locker(&m_mutex);
-        workers.remove(idx);
+        workers.remove(inputFileName);
         thread->deleteLater();
     });
 
@@ -208,7 +201,7 @@ void PocketQmlProcessor::barchSelect(int idx, const QString& inputFileName) {
 
     {
         QMutexLocker locker(&m_mutex);
-        workers.insert(idx, WorkerStruct{decodeWorker, shortFileName});
+        workers.insert(inputFileName, WorkerStruct{decodeWorker, outputFileName});
     }
 
     thread->start();       
@@ -243,47 +236,35 @@ void PocketQmlProcessor::unknownSelect(const QString& inputFileName) const {
     dialogWindow->show();
 }
 
-Q_INVOKABLE void PocketQmlProcessor::cancelAction(int idx) {
+Q_INVOKABLE void PocketQmlProcessor::cancelAction(const QString& fileName) {
     QMutexLocker locker(&m_mutex);
-    if(workers.contains(idx)){
-        WorkerStruct& workerStruct = workers[idx];
+    if(workers.contains(fileName)){
+        WorkerStruct& workerStruct = workers[fileName];
         if(workerStruct.worker) {
             workerStruct.worker->cancelProcessing();
         }
     }
 }
 
-void Q_INVOKABLE PocketQmlProcessor::onItemSelected(int idx) {
-
-    const FileItem* item = m_fileListModel.getFileItem(idx);
-
-    if(item == nullptr) {
-        return;
-    }
-
-    if(item->codingState != CodingState::csNone) {
-        return;
-    }
-
-    QString inputFileName  = QDir(m_directory).filePath(item->name);
+void Q_INVOKABLE PocketQmlProcessor::onItemSelected(const QString& fileName) {
 
     try {
-        if(item->name.endsWith(".bmp")){
-            bmpSelect(idx, inputFileName);
+        if(fileName.endsWith(".bmp")){
+            bmpSelect(fileName);
             return;
         }
 
-        if(item->name.endsWith(".barch")){
-            barchSelect(idx, inputFileName);
+        if(fileName.endsWith(".barch")){
+            barchSelect(fileName);
             return;
         }
     }
     catch(...) {
-        m_fileListModel.updateFileState(idx, CodingState::csNone);
+        m_fileListModel.updateFileState(fileName, CodingState::csNone);
         m_fileListModel.updateResultState(
-            idx,
+            fileName,
             static_cast<int>(OperationResultState::orsGeneralFileStreamError));
     }
 
-    unknownSelect(item->name);
+    unknownSelect(fileName);
 }

@@ -7,8 +7,8 @@
 #include <atomic>
 
 struct RawImageData {
-    int width;
-    int height;
+    uint32_t width;
+    uint32_t height;
     std::unique_ptr<unsigned char[]> data;
 };
 
@@ -19,7 +19,6 @@ struct EncodedData {
     dimension_type width;
     dimension_type height;
     uint64_t dataSize;
-    std::unique_ptr<dimension_type[]> rowsIndex;
     std::unique_ptr<unsigned char[]> data;
 };
 
@@ -61,6 +60,9 @@ private:
         const EncodedData& encodedData,
         std::vector<bool>& boolData,
         const std::string fileName);
+
+    bool getBitByOffset(std::unique_ptr<EncodedData>& encodedData,
+                        const uint64_t& dataOffset);
 
     bool getNextBit(std::unique_ptr<EncodedData>& encodedData,
                     uint64_t& dataOffset);

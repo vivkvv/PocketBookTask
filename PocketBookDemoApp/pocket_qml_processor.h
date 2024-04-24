@@ -18,12 +18,13 @@ public:
 
     Q_INVOKABLE void initializeFiles();
 
-    Q_INVOKABLE void onItemSelected(int idx);
+    Q_INVOKABLE void onItemSelected(const QString& fileName);
 
-    Q_INVOKABLE void cancelAction(int idx);
+    Q_INVOKABLE void cancelAction(const QString& fileName);
 
 public slots:
-    void handleResult(int idx, int result);
+    void handleResult(const QString& inputFileName,
+                      int result);
 
 signals:
     void cancelProcessing();
@@ -31,24 +32,22 @@ signals:
 private:
     struct WorkerStruct {
         Worker* worker;
-        QString fileName;
+        QString outputFileName;
     };
 
     FileListModel& m_fileListModel;
-    QString m_directory;
     QQmlApplicationEngine& m_engine;
 
     mutable QMutex m_mutex;
-    QMap<int, WorkerStruct> workers;
+    QMap<QString, WorkerStruct> workers;
 
-    void bmpSelect(int idx, const QString& inputFileName);
-    void barchSelect(int idx, const QString& inputFileName);
+    void bmpSelect(const QString& inputFileName);
+    void barchSelect(const QString& inputFileName);
     void unknownSelect(const QString& inputFileName) const;
 
     OperationResultState loadEncodedData(
         const QString& inputFileName,
         std::unique_ptr<EncodedData>& encodedData) const;
-
 };
 
 #endif // POCKET_QML_PROCESSOR_H

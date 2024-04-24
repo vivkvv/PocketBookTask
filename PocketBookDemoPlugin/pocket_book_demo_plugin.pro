@@ -14,10 +14,12 @@ uri = PocketBookTestDemoPlugin__
 
 # Input
 SOURCES += \
+    file_list_filter_proxy_model.cpp \
     file_list_model.cpp \
     pocket_book_demo_plugin.cpp
 
 HEADERS += \
+    file_list_filter_proxy_model.h \
     file_list_model.h \
     pocket_book_demo_plugin.h
 

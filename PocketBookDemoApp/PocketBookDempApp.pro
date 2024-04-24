@@ -29,6 +29,7 @@ LIBS += -L$$PWD/../$$LibBinsDir -lPocketBookCodecLib
 
 SOURCES += main.cpp \
     $$POCKETBOOK_PLUGIN_DIR/file_list_model.cpp \
+    $$POCKETBOOK_PLUGIN_DIR/file_list_filter_proxy_model.cpp \
     pocket_qml_processor.cpp \
     workers.cpp
 
@@ -42,6 +43,7 @@ include(deployment.pri)
 
 HEADERS += \
     $$POCKETBOOK_PLUGIN_DIR/file_list_model.h \
+    $$POCKETBOOK_PLUGIN_DIR/file_list_filter_proxy_model.h \
     pocket_qml_processor.h \
     workers.h
 

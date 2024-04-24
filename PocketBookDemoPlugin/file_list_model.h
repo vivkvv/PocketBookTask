@@ -39,10 +39,10 @@ public:
     Q_INVOKABLE void setFilesList(const QList<FileItem>& fileDetails);
     void addFile(const FileItem& fileDetails);
 
-    void updateFileState(int idx, CodingState codingState);
-    void updateResultState(int idx, int resultState);
+    void updateFileState(const QString& fileName, CodingState codingState);
+    void updateResultState(const QString& fileName, int resultState);
 
-    const FileItem* const getFileItem(int idx) const;
+    int getFileIdx(const QString& fileName) const;
 
 private:
 
@@ -51,8 +51,8 @@ private:
     QHash<int, QByteArray> roleNames() const override;
 
 private:
-    QList<FileItem> m_filesList;
-    const QQmlApplicationEngine& m_engine;
+    QList<FileItem> mFilesList;
+    const QQmlApplicationEngine& mEngine;
 };
 
 Q_DECLARE_METATYPE(FileItem)

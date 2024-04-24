@@ -2,57 +2,68 @@
 
 #include <QQmlComponent>
 #include <QQuickWindow>
+#include <QLocale>
 
 FileListModel::FileListModel(const QQmlApplicationEngine& engine, QObject *parent)
     : QAbstractListModel(parent)
-    , m_engine(engine) {
+    , mEngine(engine) {
 }
 
 Q_INVOKABLE void FileListModel::setFilesList(const QList<FileItem>& fileDetails) {
     beginResetModel();
-    m_filesList = fileDetails;
+    mFilesList = fileDetails;
     endResetModel();
 }
 
 void FileListModel::addFile(const FileItem& fileDetails) {
-    auto it = std::find_if(m_filesList.begin(), m_filesList.end(), [&fileDetails](const FileItem& fi){
+    auto it = std::find_if(mFilesList.begin(), mFilesList.end(), [&fileDetails](const FileItem& fi){
         return fi.name == fileDetails.name;
     });
 
-    if(it != m_filesList.end()){
+    if(it != mFilesList.end()){
         return;
     }
 
     beginResetModel();
-    m_filesList.append(fileDetails);
+    mFilesList.append(fileDetails);
     endResetModel();
 }
 
-const FileItem* const FileListModel::getFileItem(int idx) const {
-    if(idx < 0 || idx >= m_filesList.size()){
-        return nullptr;
-    }
+int FileListModel::getFileIdx(const QString& fileName) const {
+    int idx = -1;
+    for(int i = 0; i < mFilesList.size(); ++i){
+        if(mFilesList[i].name == fileName){
+            idx = i;
+            break;
+        };
+    };
 
-    return &m_filesList[idx];
+    return idx;
 }
 
-void FileListModel::updateResultState(int idx, int resultState) {
-    if(idx < 0 || idx >= m_filesList.size()){
+void FileListModel::updateResultState(const QString& fileName, int resultState) {
+
+    int idx = getFileIdx(fileName);
+
+    if(idx < 0){
         return;
     }
 
-    m_filesList[idx].resultState = static_cast<OperationResultState>(resultState);
+    mFilesList[idx].resultState = static_cast<OperationResultState>(resultState);
 
     QModelIndex modelIndex = createIndex(idx, 0);
     emit dataChanged(modelIndex, modelIndex);
 }
 
-void FileListModel::updateFileState(int idx, CodingState codingState){
-    if(idx < 0 || idx >= m_filesList.size()){
+void FileListModel::updateFileState(const QString& fileName, CodingState codingState){
+
+    int idx = getFileIdx(fileName);
+
+    if(idx < 0){
         return;
     }
 
-    m_filesList[idx].codingState = codingState;
+    mFilesList[idx].codingState = codingState;
 
     QModelIndex modelIndex = createIndex(idx, 0);
     emit dataChanged(modelIndex, modelIndex);
@@ -61,8 +72,9 @@ void FileListModel::updateFileState(int idx, CodingState codingState){
 QHash<int, QByteArray> FileListModel::roleNames() const {
     QHash<int, QByteArray> roles;
     roles[Qt::DisplayRole] = "display";
-    roles[Qt::UserRole] = "state";
-    roles[Qt::UserRole + 1] = "resultCode";
+    roles[Qt::UserRole] = "size";
+    roles[Qt::UserRole + 1] = "state";
+    roles[Qt::UserRole + 2] = "resultCode";
     return roles;
 }
 
@@ -72,24 +84,26 @@ int FileListModel::rowCount(const QModelIndex& parent) const
         return 0;
     }
 
-    return static_cast<int>(m_filesList.size());
+    return static_cast<int>(mFilesList.size());
 }
 
 QVariant FileListModel::data(const QModelIndex& index, int role) const
 {
-    if (!index.isValid() || index.row() >= m_filesList.size()) {
+    if (!index.isValid() || index.row() >= mFilesList.size()) {
         return QVariant();
     }
 
-    const FileItem& item = m_filesList[index.row()];
+    const FileItem& item = mFilesList[index.row()];
 
 
     switch(role) {
         case Qt::DisplayRole:
-            return QString("%1 (%2 bytes)").arg(item.name).arg(item.size);
+            return item.name;
         case Qt::UserRole:
-            return QVariant::fromValue(static_cast<int>(item.codingState));
+            return QLocale().toString(static_cast<double>(item.size), 'f', 0);
         case Qt::UserRole + 1:
+            return QVariant::fromValue(static_cast<int>(item.codingState));
+        case Qt::UserRole + 2:
             return static_cast<int>(item.resultState);
     }
 

@@ -1,5 +1,5 @@
-#ifndef ENCODEWORKER_H
-#define ENCODEWORKER_H
+#ifndef WORKERS_H
+#define WORKERS_H
 
 #include <pocket_book_codec_lib.h>
 #include <QObject>
@@ -8,22 +8,22 @@ class Worker : public QObject {
     Q_OBJECT
 
 public:
-    Worker(int idx, const QString& outputFileName, QObject* parent = nullptr);
+    Worker(const QString& m_inputFileName, const QString& outputFileName,
+           QObject* parent = nullptr);
     virtual ~Worker();
 
-    const QString& getOutputFileName() const;
-
 signals:
-    void resultReady(int idx, int result);
+    void resultReady(const QString& inputFileName,
+                     int result);
 
 public slots:
     virtual void process() = 0;
-    virtual void cancelProcessing() { m_decoder.cancel(); };
+    virtual void cancelProcessing() { mDecoder.cancel(); };
 
 protected:
-    PocketDecoder m_decoder;
-    int m_idx;
-    const QString m_outputFileName;
+    PocketDecoder mDecoder;
+    const QString mInputFileName;
+    const QString mOutputFileName;
 };
 
 
@@ -31,7 +31,8 @@ class EncodeWorker : public Worker {
     Q_OBJECT
 
 public:
-    EncodeWorker(int idx, const QString& outputFileName,
+    EncodeWorker(const QString& m_inputFileName,
+                 const QString& outputFileName,
                  std::unique_ptr<RawImageData> rawData,
                  QObject* parent = nullptr);
 
@@ -39,14 +40,15 @@ public slots:
     void process();
 
 protected:
-    std::unique_ptr<RawImageData> m_rawData;
+    std::unique_ptr<RawImageData> mRawData;
 };
 
 class DecodeWorker : public Worker {
     Q_OBJECT
 
 public:
-    DecodeWorker (int idx, const QString& outputFileName,
+    DecodeWorker (const QString& m_inputFileName,
+                 const QString& outputFileName,
                  std::unique_ptr<EncodedData> encodedData,
                  QObject* parent = nullptr);
 
@@ -54,8 +56,7 @@ public slots:
     void process();
 
 protected:
-    std::unique_ptr<EncodedData> m_encodedData;
+    std::unique_ptr<EncodedData> mEncodedData;
 };
 
-
-#endif // ENCODEWORKER_H
+#endif // WORKERS_H

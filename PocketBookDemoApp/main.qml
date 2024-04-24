@@ -1,5 +1,5 @@
-import QtQuick 2.0
-import QtQuick.Controls
+import QtQuick 2.12
+import QtQuick.Controls 2.12
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls.Material 2.5
@@ -7,6 +7,15 @@ import com.vovkvv.pocketprocessing 1.0
 import PluginBins 1.0
 
 Window {
+
+    function getFileName(path) {
+        var parts = path.split("/");
+        if (parts.length > 0) {
+            return parts[parts.length - 1];
+        }
+        return "";
+    }
+
     function stateText(state) {
             switch(state) {
                 case 1: return "coding ...";
@@ -39,7 +48,6 @@ Window {
             }
         }
 
-
     id: root
     objectName: "PocketMainWindowQML"
     visible: true
@@ -51,10 +59,44 @@ Window {
         processor.initializeFiles()
     }
 
+    Column {
+        id: columnLayout
+        width: parent.width
+
+        RowLayout {
+            spacing: 10
+
+            Text {
+                text: "Filter"
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            ComboBox {
+                id: filterCombo
+                width: 200
+                model: ["*.*", "*.bmp", "*.png", "*.bmp;*.png", "*.barch"]
+
+                Component.onCompleted: {
+                    currentIndex = 0
+                }
+
+                onCurrentIndexChanged: {
+                    if (currentIndex != -1) {
+                        filterModel.setFilterByExtension(model[currentIndex]);
+                    }
+                }
+            }
+
+        }
+    }
+
     ListView {
         id: listView
-        anchors.fill: parent
-        model: fileListModel
+        anchors.top: columnLayout.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        model: filterModel
         clip: true
         highlight: Rectangle { color: "lightblue"; radius: 5 }
         interactive: contentHeight > height
@@ -83,8 +125,10 @@ Window {
 
                     Text {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: listView.width * 0.5
                         Layout.maximumWidth: parent.width - stateTextId.width - 20
-                        text: "   " + model.display
+                        padding: 20
+                        text: getFileName(model.display)
                         elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
 
@@ -92,11 +136,20 @@ Window {
                             anchors.fill: parent
                             onClicked: {
                                 listView.currentIndex = index
-                                processor.onItemSelected(index)
+                                processor.onItemSelected(model.display)
                             }
                         }
 
                      }
+
+                    Text {
+                        id: sizeId
+                        Layout.preferredWidth: listView.width * 0.1
+                        text: model.size
+                        horizontalAlignment: Text.AlignRight
+                        verticalAlignment: Text.AlignVCenter
+                        clip: true
+                    }
 
                     Column {
                         visible: model.state !== 0
@@ -110,14 +163,14 @@ Window {
                             Material.elevation: cancelButton.pressed ? 6 : 2
                             opacity: cancelButton.pressed ? 0.8 : 1.0
                             scale: cancelButton.pressed ? 0.95 : 1.0
-                            onClicked: processor.cancelAction(model.index)
+                            onClicked: processor.cancelAction(model.display)
                         }
                     }
 
                     Text {
                         id: stateTextId
+                        Layout.preferredWidth: listView.width * 0.2
                         text: stateText(model.state)
-                        Layout.preferredWidth: Math.max(stateText.contentWidth, 100)
                         horizontalAlignment: Text.AlignRight
                         verticalAlignment: Text.AlignVCenter
                         clip: true
@@ -126,11 +179,9 @@ Window {
 
                      Text {
                         text: resultText(model.resultCode)
+                        Layout.preferredWidth: listView.width * 0.2
                      }
 
-                     Text {
-                        text: "     "
-                     }
                 }
 
             }
