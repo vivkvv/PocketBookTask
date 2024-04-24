@@ -35,11 +35,11 @@ private:
         QString outputFileName;
     };
 
-    FileListModel& m_fileListModel;
-    QQmlApplicationEngine& m_engine;
+    FileListModel& mFileListModel;
+    QQmlApplicationEngine& mEngine;
 
-    mutable QMutex m_mutex;
-    QMap<QString, WorkerStruct> workers;
+    mutable QMutex mMutex;
+    QMap<QString, WorkerStruct> mWorkers;
 
     void bmpSelect(const QString& inputFileName);
     void barchSelect(const QString& inputFileName);

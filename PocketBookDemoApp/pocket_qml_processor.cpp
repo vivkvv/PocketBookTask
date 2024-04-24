@@ -14,8 +14,8 @@ PocketQmlProcessor::PocketQmlProcessor(FileListModel& model,
                                        QQmlApplicationEngine& engine,
                                        QObject *parent)
     : QObject{parent}
-    , m_fileListModel(model)
-    , m_engine(engine) {
+    , mFileListModel(model)
+    , mEngine(engine) {
 }
 
 Q_INVOKABLE void PocketQmlProcessor::initializeFiles() {
@@ -39,24 +39,24 @@ Q_INVOKABLE void PocketQmlProcessor::initializeFiles() {
         filesList.append(item);
     }
 
-    m_fileListModel.setFilesList(filesList);
+    mFileListModel.setFilesList(filesList);
 }
 
 void PocketQmlProcessor::handleResult(
         const QString& inputFileName,
         int result) {
 
-    m_fileListModel.updateFileState(inputFileName, CodingState::csNone);
-    m_fileListModel.updateResultState(inputFileName, result);
+    mFileListModel.updateFileState(inputFileName, CodingState::csNone);
+    mFileListModel.updateResultState(inputFileName, result);
 
-    QMutexLocker locker(&m_mutex);
-    if(workers.contains(inputFileName)){
-        WorkerStruct& workerStruct = workers[inputFileName];
+    QMutexLocker locker(&mMutex);
+    if(mWorkers.contains(inputFileName)){
+        WorkerStruct& workerStruct = mWorkers[inputFileName];
         QFileInfo fileInfo(workerStruct.outputFileName);
         if(fileInfo.exists()){
             FileItem fileDetails{workerStruct.outputFileName, fileInfo.size(),
                                  CodingState::csNone};
-            m_fileListModel.addFile(fileDetails);
+            mFileListModel.addFile(fileDetails);
         }
     }
 }
@@ -65,13 +65,13 @@ void PocketQmlProcessor::bmpSelect(const QString& inputFileName) {
     QImage img;
     bool loaded = img.load(inputFileName);
     if(!loaded){
-        m_fileListModel.updateResultState(
+        mFileListModel.updateResultState(
             inputFileName,
             static_cast<int>(OperationResultState::orsCantLoadInputImage));
         return;
     }
 
-    m_fileListModel.updateFileState(inputFileName, CodingState::csCoding);
+    mFileListModel.updateFileState(inputFileName, CodingState::csCoding);
 
     QImage converted = img.convertToFormat(QImage::Format_Grayscale8);
 
@@ -113,16 +113,16 @@ void PocketQmlProcessor::bmpSelect(const QString& inputFileName) {
     connect(encodeWorker, &EncodeWorker::resultReady, thread, &QThread::quit);
     connect(thread, &QThread::finished, encodeWorker, &QObject::deleteLater);
     connect(thread, &QThread::finished, this, [this, inputFileName, thread]() {
-        QMutexLocker locker(&m_mutex);
-        workers.remove(inputFileName);
+        QMutexLocker locker(&mMutex);
+        mWorkers.remove(inputFileName);
         thread->deleteLater();
     });
 
     connect(thread, &QThread::started, encodeWorker, &EncodeWorker::process);
 
     {
-        QMutexLocker locker(&m_mutex);
-        workers.insert(inputFileName, WorkerStruct{encodeWorker, outputFileName});
+        QMutexLocker locker(&mMutex);
+        mWorkers.insert(inputFileName, WorkerStruct{encodeWorker, outputFileName});
     }
 
     thread->start();
@@ -173,13 +173,13 @@ void PocketQmlProcessor::barchSelect(const QString& inputFileName) {
     OperationResultState loadResult = loadEncodedData(inputFileName, encodedData);
 
     if(loadResult != OperationResultState::csNone){
-        m_fileListModel.updateResultState(
+        mFileListModel.updateResultState(
             inputFileName,
             static_cast<int>(loadResult));
         return;
     }
 
-    m_fileListModel.updateFileState(inputFileName, CodingState::csDecoding);
+    mFileListModel.updateFileState(inputFileName, CodingState::csDecoding);
 
     QString outputFileName = inputFileName + "unpacked.bmp";
     auto decodeWorker = new DecodeWorker(inputFileName, outputFileName, std::move(encodedData));
@@ -192,16 +192,16 @@ void PocketQmlProcessor::barchSelect(const QString& inputFileName) {
     connect(decodeWorker, &DecodeWorker::resultReady, thread, &QThread::quit);
     connect(thread, &QThread::finished, decodeWorker, &QObject::deleteLater);
     connect(thread, &QThread::finished, this, [this, inputFileName, thread]() {
-        QMutexLocker locker(&m_mutex);
-        workers.remove(inputFileName);
+        QMutexLocker locker(&mMutex);
+        mWorkers.remove(inputFileName);
         thread->deleteLater();
     });
 
     connect(thread, &QThread::started, decodeWorker, &DecodeWorker::process);
 
     {
-        QMutexLocker locker(&m_mutex);
-        workers.insert(inputFileName, WorkerStruct{decodeWorker, outputFileName});
+        QMutexLocker locker(&mMutex);
+        mWorkers.insert(inputFileName, WorkerStruct{decodeWorker, outputFileName});
     }
 
     thread->start();       
@@ -210,7 +210,7 @@ void PocketQmlProcessor::barchSelect(const QString& inputFileName) {
 }
 
 void PocketQmlProcessor::unknownSelect(const QString& inputFileName) const {
-    QQmlComponent component(&m_engine, QUrl(QStringLiteral("qrc:/ErrorDialog.qml")));
+    QQmlComponent component(&mEngine, QUrl(QStringLiteral("qrc:/ErrorDialog.qml")));
 
     if (component.isError()) {
         qWarning() << "Error loading dialog:" << component.errorString();
@@ -237,9 +237,9 @@ void PocketQmlProcessor::unknownSelect(const QString& inputFileName) const {
 }
 
 Q_INVOKABLE void PocketQmlProcessor::cancelAction(const QString& fileName) {
-    QMutexLocker locker(&m_mutex);
-    if(workers.contains(fileName)){
-        WorkerStruct& workerStruct = workers[fileName];
+    QMutexLocker locker(&mMutex);
+    if(mWorkers.contains(fileName)){
+        WorkerStruct& workerStruct = mWorkers[fileName];
         if(workerStruct.worker) {
             workerStruct.worker->cancelProcessing();
         }
@@ -260,8 +260,8 @@ void Q_INVOKABLE PocketQmlProcessor::onItemSelected(const QString& fileName) {
         }
     }
     catch(...) {
-        m_fileListModel.updateFileState(fileName, CodingState::csNone);
-        m_fileListModel.updateResultState(
+        mFileListModel.updateFileState(fileName, CodingState::csNone);
+        mFileListModel.updateResultState(
             fileName,
             static_cast<int>(OperationResultState::orsGeneralFileStreamError));
     }
